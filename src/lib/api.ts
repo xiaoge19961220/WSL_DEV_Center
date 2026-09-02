@@ -1,0 +1,13 @@
+import { invoke } from "@tauri-apps/api/core";
+import type { CommandOutput, DockerContainer, DistroResourceInfo, PortInfo, WslDistro } from "./types";
+export const listWslDistros = () => invoke<WslDistro[]>("list_wsl_distros");
+export const startDistro = (name: string) => invoke<CommandOutput>("start_distro", { name });
+export const terminateDistro = (name: string) => invoke<CommandOutput>("terminate_distro", { name });
+export const restartDistro = (name: string) => invoke<CommandOutput>("restart_distro", { name });
+export const shutdownWsl = () => invoke<CommandOutput>("shutdown_wsl");
+export const openTerminal = (name: string) => invoke<void>("open_terminal", { name });
+export const openHome = (name: string) => invoke<void>("open_home_in_explorer", { name });
+export const openVscode = (name: string) => invoke<void>("open_vscode_home", { name });
+export const resources = (name: string) => invoke<DistroResourceInfo>("get_distro_resource_info", { name });
+export const ports = (name: string) => invoke<PortInfo[]>("list_ports", { name });
+export const containers = (name: string) => invoke<DockerContainer[]>("list_docker_containers", { name });
