@@ -11,6 +11,67 @@ async fn list_wsl_distros() -> Result<Vec<models::Distro>, String> {
 }
 
 #[tauri::command]
+async fn list_online_distros() -> Result<Vec<models::OnlineDistro>, String> {
+    tauri::async_runtime::spawn_blocking(commands::wsl::list_online_distros)
+        .await
+        .map_err(|e| format!("后台任务失败（list_online_distros）：{e}"))?
+}
+
+#[tauri::command]
+async fn install_distro(distribution: String) -> Result<models::Output, String> {
+    tauri::async_runtime::spawn_blocking(move || commands::wsl::install_distro(distribution))
+        .await
+        .map_err(|e| format!("后台任务失败（install_distro）：{e}"))?
+}
+
+#[tauri::command]
+async fn import_distro(
+    name: String,
+    install_location: String,
+    archive_path: String,
+    vhd: bool,
+) -> Result<models::Output, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        commands::wsl::import_distro(name, install_location, archive_path, vhd)
+    })
+    .await
+    .map_err(|e| format!("后台任务失败（import_distro）：{e}"))?
+}
+
+#[tauri::command]
+async fn export_distro(
+    name: String,
+    archive_path: String,
+    vhd: bool,
+) -> Result<models::Output, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        commands::wsl::export_distro(name, archive_path, vhd)
+    })
+    .await
+    .map_err(|e| format!("后台任务失败（export_distro）：{e}"))?
+}
+
+#[tauri::command]
+async fn clone_distro(
+    source: String,
+    target: String,
+    install_location: String,
+) -> Result<models::Output, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        commands::wsl::clone_distro(source, target, install_location)
+    })
+    .await
+    .map_err(|e| format!("后台任务失败（clone_distro）：{e}"))?
+}
+
+#[tauri::command]
+async fn unregister_distro(name: String) -> Result<models::Output, String> {
+    tauri::async_runtime::spawn_blocking(move || commands::wsl::unregister_distro(name))
+        .await
+        .map_err(|e| format!("后台任务失败（unregister_distro）：{e}"))?
+}
+
+#[tauri::command]
 async fn start_distro(name: String) -> Result<models::Output, String> {
     tauri::async_runtime::spawn_blocking(move || commands::wsl::start_distro(name))
         .await
@@ -113,6 +174,12 @@ pub fn run_app() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             list_wsl_distros,
+            list_online_distros,
+            install_distro,
+            import_distro,
+            export_distro,
+            clone_distro,
+            unregister_distro,
             start_distro,
             terminate_distro,
             restart_distro,

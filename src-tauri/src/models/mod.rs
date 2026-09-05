@@ -9,6 +9,13 @@ pub struct Distro {
     pub is_default: bool,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OnlineDistro {
+    pub name: String,
+    pub friendly_name: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Output {
     pub success: bool,
@@ -21,6 +28,9 @@ pub struct Output {
 #[serde(rename_all = "camelCase")]
 pub struct Resource {
     pub distro: String,
+    pub os_version_text: Option<String>,
+    pub kernel_version_text: Option<String>,
+    pub cpu_text: Option<String>,
     pub memory_text: Option<String>,
     pub disk_text: Option<String>,
     pub uptime_text: Option<String>,
