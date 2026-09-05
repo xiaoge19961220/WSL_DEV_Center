@@ -24,3 +24,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
+/.skill-sync-deps/
+
+/.skill-sync-stage
