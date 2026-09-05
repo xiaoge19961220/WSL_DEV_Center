@@ -1,7 +1,11 @@
 use crate::models::*;
 use crate::services::process::run_wsl as run;
 
-#[tauri::command] pub fn list_wsl_distros() -> Result<Vec<Distro>, String> { let out=run(&["-l","-v"])?; if !out.success { return Err(format!("WSL is not installed or unavailable: {} (exit {:?})",out.stderr,out.code)); } Ok(out.stdout.lines().filter_map(|line| { let line=line.trim(); if line.is_empty() || line.to_lowercase().contains("name") && line.to_lowercase().contains("version") {return None}; let default=line.starts_with('*'); let p:Vec<_>=line.trim_start_matches('*').split_whitespace().collect(); if p.len()<3{return None}; Some(Distro{name:p[..p.len()-2].join(" "),state:p[p.len()-2].into(),version:p[p.len()-1].parse().ok(),is_default:default}) }).collect()) }
+#[tauri::command]
+pub fn list_wsl_distros() -> Result<Vec<Distro>, String> {
+    let output = crate::services::process::checked(run(&["--list", "--verbose"] )?, "读取 WSL 实例列表（请确认已安装 WSL）")?;
+    Ok(crate::services::wsl_parser::parse_wsl_list(&output.stdout))
+}
 #[tauri::command] pub fn start_distro(name:String)->Result<Output,String>{run(&["-d",&name,"--","echo","ok"])}
 #[tauri::command] pub fn terminate_distro(name:String)->Result<Output,String>{run(&["--terminate",&name])}
 #[tauri::command] pub fn restart_distro(name:String)->Result<Output,String>{let a=terminate_distro(name.clone())?;std::thread::sleep(std::time::Duration::from_millis(500));let b=start_distro(name)?;Ok(Output{success:a.success&&b.success,code:b.code,stdout:format!("{}\n{}",a.stdout,b.stdout),stderr:format!("{}\n{}",a.stderr,b.stderr)})}
