@@ -1,0 +1,2 @@
+import { useEffect, useState } from "react";
+export function Settings() { const [refresh, setRefresh] = useState(localStorage.getItem("refresh") ?? "5"); useEffect(() => localStorage.setItem("refresh", refresh), [refresh]); return <section className="panel"><h2>本地设置</h2><label>刷新间隔 <select value={refresh} onChange={(e) => setRefresh(e.target.value)}><option value="0">手动</option><option value="3">3 秒</option><option value="5">5 秒</option><option value="10">10 秒</option></select></label><p className="muted">设置仅保存在本机，不会同步到云端。</p></section>; }

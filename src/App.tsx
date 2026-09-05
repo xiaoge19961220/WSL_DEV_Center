@@ -1,26 +1,77 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "./lib/api";
-import type { DockerContainer, DistroResourceInfo, PortInfo, WslDistro } from "./lib/types";
-import "./App.css";
-import { ErrorBox, Loading, Status } from "./components/Feedback";
-import { ConfirmDialog } from "./components/ConfirmDialog";
+import type { WslDistro } from "./lib/types";
+import { ErrorBox, Loading } from "./components/Feedback";
 import { Machines } from "./components/Machines";
+import { ConfirmDialog } from "./components/ConfirmDialog";
+import { Detail } from "./components/Detail";
+import { Docker } from "./components/InspectionPanels";
+import { Settings } from "./components/SettingsPage";
+import "./App.css";
 
-type Page = "Dashboard" | "Machines" | "Docker" | "Settings" | "Detail";
-function App() {
-  const [page, setPage] = useState<Page>("Dashboard"), [distros, setDistros] = useState<WslDistro[]>([]), [selected, setSelected] = useState<WslDistro>(), [error, setError] = useState(""), [confirm, setConfirm] = useState(false);
+const menu = { "/": "概览", "/machines": "实例", "/docker": "Docker", "/settings": "设置" };
+function currentRoute() { return window.location.hash.slice(1) || "/"; }
+
+export default function App() {
+  const [route, setRoute] = useState(currentRoute);
+  const [distros, setDistros] = useState<WslDistro[]>([]);
   const [loading, setLoading] = useState(true), [listError, setListError] = useState("");
-  const fetching = useRef(false);
-  const refresh = useCallback(async () => { if (fetching.current) return; fetching.current = true; setLoading(true); try { setDistros(await api.listWslDistros()); setListError(""); } catch (e) { setListError(String(e)); } finally { fetching.current = false; setLoading(false); } }, []);
-  useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => { if (page !== "Machines") return; const seconds = Number(localStorage.getItem("refresh") ?? 5); if (![3, 5, 10].includes(seconds)) return; const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, seconds * 1000); return () => clearInterval(timer); }, [page, refresh]);
-  const goDetail = (d: WslDistro) => { setSelected(d); setPage("Detail"); };
-  const body = page === "Dashboard" ? <Dashboard distros={distros} /> : page === "Machines" ? <section className="panel"><div className="toolbar"><h2>WSL 实例</h2><button disabled={loading} onClick={() => void refresh()}>刷新列表</button></div>{loading && <Loading />}<ErrorBox message={listError} />{!loading && !listError && <Machines distros={distros} refresh={refresh} select={goDetail} error={setError} />}</section> : page === "Docker" ? <Docker distros={distros} error={setError} /> : page === "Settings" ? <Settings /> : selected ? <Detail distro={selected} error={setError} /> : null;
-  return <div className="shell"><aside><div className="brand"><b>WSL</b> 开发中心</div><nav>{(["Dashboard", "Machines", "Docker", "Settings"] as Page[]).map((p) => <button className={page === p || page === "Detail" && p === "Machines" ? "active" : ""} onClick={() => setPage(p)} key={p}>{({Dashboard:"概览",Machines:"实例",Docker:"Docker",Settings:"设置",Detail:"详情"})[p]}</button>)}</nav></aside><main><header><div><span className="eyebrow">本地开发环境</span><h1>{page === "Detail" ? selected?.name : ({Dashboard:"概览",Machines:"实例",Docker:"Docker",Settings:"设置",Detail:"详情"})[page]}</h1></div>{page === "Machines" && <button className="danger" onClick={() => setConfirm(true)}>关闭所有 WSL 实例</button>}</header>{error && <div className="error"><strong>操作失败</strong><br />{error}</div>}{body}{confirm && <ConfirmDialog cancel={() => setConfirm(false)} confirm={async () => { await api.shutdownWsl(); setConfirm(false); await refresh(); }} />}</main></div>;
+  const [error, setError] = useState(""), [confirm, setConfirm] = useState(false);
+  const fetching = useRef<Promise<void> | null>(null);
+  const refresh = useCallback((): Promise<void> => {
+    if (fetching.current) return fetching.current;
+    setLoading(true);
+    const request = (async () => {
+      try { setDistros(await api.listWslDistros()); setListError(""); }
+      catch (e) { setListError(String(e)); }
+      finally { setLoading(false); fetching.current = null; }
+    })();
+    fetching.current = request;
+    return request;
+  }, []);
+  useEffect(() => {
+    const changed = () => { setRoute(currentRoute()); setError(""); };
+    window.addEventListener("hashchange", changed);
+    return () => window.removeEventListener("hashchange", changed);
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh, route]);
+  useEffect(() => {
+    if (route !== "/machines") return;
+    const seconds = Number(localStorage.getItem("refresh") ?? 5);
+    if (![3, 5, 10].includes(seconds)) return;
+    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, seconds * 1000);
+    return () => clearInterval(timer);
+  }, [route, refresh]);
+  let name = "";
+  if (route.startsWith("/machines/")) {
+    try { name = decodeURIComponent(route.slice("/machines/".length)); } catch { name = ""; }
+  }
+  const selected = distros.find(d => d.name === name);
+  const title = name || menu[route as keyof typeof menu] || "页面不存在";
+  return <div className="shell">
+    <aside><div className="brand"><b>WSL</b> 开发中心</div><nav aria-label="主导航">
+      {Object.entries(menu).map(([path, label]) => <a key={path} href={`#${path}`} aria-current={route === path || (name && path === "/machines") ? "page" : undefined}>{label}</a>)}
+    </nav><p className="sidebar-note">纯本地 · 无账号 · 无云同步</p></aside>
+    <main><header><div><span className="eyebrow">本地开发环境</span><h1>{title}</h1></div>
+      {route === "/machines" && <button className="danger" onClick={() => setConfirm(true)}>关闭所有 WSL 实例</button>}
+    </header><ErrorBox message={error} />
+    {route !== "/settings" && <><ErrorBox message={listError} />{loading && <Loading />}{listError && <button disabled={loading} onClick={() => void refresh()}>重试读取实例</button>}</>}
+    {route === "/" && <>
+      <section className="hero"><span className="eyebrow">WSL 开发环境</span><h2>运行状态，一目了然。<br />开发环境，尽在本地。</h2><p className="muted">在本机管理 WSL 实例、端口和 Docker 容器。</p></section>
+      {!loading && !listError && <section className="metrics">{[
+        ["运行中", distros.filter(d => d.state === "Running").length],
+        ["已停止", distros.filter(d => d.state === "Stopped").length],
+        ["实例总数", distros.length], ["Docker", "按需查看"],
+      ].map(([label, value]) => <article className="metric" key={label}><span>{label}</span><strong>{value}</strong></article>)}</section>}
+    </>}
+    {route === "/machines" && <section className="panel"><div className="toolbar"><h2>WSL 实例</h2><button disabled={loading} onClick={() => void refresh()}>{loading ? "正在刷新…" : "刷新列表"}</button></div>
+      {!listError && (!loading || distros.length > 0) && <Machines distros={distros} refresh={refresh} select={d => { window.location.hash = `/machines/${encodeURIComponent(d.name)}`; }} error={setError} />}
+    </section>}
+    {route === "/docker" && !listError && <Docker distros={distros} error={setError} />}
+    {route === "/settings" && <Settings />}
+    {name && !loading && !listError && (selected ? <Detail key={`${selected.name}:${selected.state}`} distro={selected} /> : <p>实例不存在，请返回实例列表刷新。</p>)}
+    {!name && !(route in menu) && <p>页面不存在。<a href="#/">返回概览</a></p>}
+    {confirm && <ConfirmDialog cancel={() => setConfirm(false)} confirm={async () => { await api.shutdownWsl(); setConfirm(false); await refresh(); }} />}
+    </main>
+  </div>;
 }
-function Dashboard({ distros }: { distros: WslDistro[] }) { const running = distros.filter((d) => d.state === "Running").length; return <><section className="hero"><span className="eyebrow">WSL 开发环境</span><h2>运行状态，一目了然。<br />开发环境，尽在本地。</h2><p className="muted">在本机管理 WSL 实例、端口和 Docker 容器。</p></section><section className="metrics">{[["运行中", running], ["已停止", distros.filter((d) => d.state === "Stopped").length], ["实例总数", distros.length], ["Docker", "按需查看"]].map(([k, v]) => <article className="metric" key={String(k)}><span>{k}</span><strong>{v}</strong></article>)}</section></>; }
-function Detail({ distro, error }: { distro: WslDistro; error: (v: string) => void }) { const [resource, setResource] = useState<DistroResourceInfo>(), [portList, setPorts] = useState<PortInfo[]>([]), [docker, setDocker] = useState<DockerContainer[]>([]); const load = async (what: "resource" | "ports" | "docker") => { try { if (what === "resource") setResource(await api.resources(distro.name)); if (what === "ports") setPorts(await api.ports(distro.name)); if (what === "docker") setDocker(await api.containers(distro.name)); } catch (e) { error(String(e)); } }; useEffect(() => { void load("resource"); }, [distro.name]); return <><section className="panel"><div className="detail"><h2>{distro.name} <Status state={distro.state} /></h2><button onClick={() => void load("resource")}>刷新资源</button></div><div className="resource">{[["内存", resource?.memoryText], ["磁盘", resource?.diskText], ["运行时间", resource?.uptimeText], ["进程数", resource?.processCount]].map(([k, v]) => <article key={String(k)}><span>{k}</span><strong>{String(v || "暂不可用")}</strong></article>)}</div></section><section className="panel"><div className="toolbar"><h2>监听端口</h2><button onClick={() => void load("ports")}>刷新端口</button></div><PortRows ports={portList} /></section><section className="panel"><div className="toolbar"><h2>Docker 容器</h2><button onClick={() => void load("docker")}>刷新 Docker</button></div>{docker.length ? <div className="table"><table><thead><tr><th>名称</th><th>镜像</th><th>状态</th><th>端口</th></tr></thead><tbody>{docker.map((c) => <tr key={c.id}><td>{c.names}</td><td>{c.image}</td><td>{c.status}</td><td>{c.ports ?? "—"}</td></tr>)}</tbody></table></div> : <p className="muted">尚未查询容器，或该实例中没有容器。</p>}</section></>; }
-function Docker({ distros, error }: { distros: WslDistro[]; error: (v: string) => void }) { const [name, setName] = useState(""), [items, setItems] = useState<DockerContainer[]>([]); const load = async (v: string) => { setName(v); if (!v) return; try { setItems(await api.containers(v)); } catch (e) { error(`无法查询此实例的 Docker。 ${String(e)}`); } }; return <section className="panel"><h2>按实例查看 Docker</h2><p className="muted">仅查询当前选择的实例。</p><select value={name} onChange={(e) => void load(e.target.value)}><option value="">请选择运行中的实例</option>{distros.filter((d) => d.state === "Running").map((d) => <option key={d.name}>{d.name}</option>)}</select>{items.length > 0 && <p>{items.length} 个容器。</p>}</section>; }
-function PortRows({ ports }: { ports: PortInfo[] }) { return ports.length ? <div className="table"><table><thead><tr><th>协议</th><th>地址</th><th>端口</th><th>进程</th><th>PID</th><th /></tr></thead><tbody>{ports.map((p) => <tr key={p.raw}><td>{p.protocol}</td><td>{p.localAddress}</td><td>{p.port}</td><td>{p.processName ?? "—"}</td><td>{p.pid ?? "—"}</td><td><button onClick={() => navigator.clipboard.writeText(`localhost:${p.port}`)}>复制</button></td></tr>)}</tbody></table></div> : <p className="muted">尚未查询端口，或没有监听端口。</p>; }
-function Settings() { const [refresh, setRefresh] = useState(localStorage.getItem("refresh") ?? "5"); useEffect(() => localStorage.setItem("refresh", refresh), [refresh]); return <section className="panel"><h2>本地设置</h2><label>刷新间隔 <select value={refresh} onChange={(e) => setRefresh(e.target.value)}><option value="0">手动</option><option value="3">3 秒</option><option value="5">5 秒</option><option value="10">10 秒</option></select></label><p className="muted">设置仅保存在本机，不会同步到云端。</p></section>; }
-export default App;
