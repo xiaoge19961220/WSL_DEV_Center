@@ -1,3 +1,4 @@
+import { readSettings } from "./storage";
 import { invoke } from "@tauri-apps/api/core";
 import type { CommandOutput, DockerContainer, DistroResourceInfo, PortInfo, WslDistro } from "./types";
 async function action(command: string, args?: Record<string, unknown>): Promise<CommandOutput> {
@@ -10,7 +11,7 @@ export const startDistro = (name: string) => action("start_distro", { name });
 export const terminateDistro = (name: string) => action("terminate_distro", { name });
 export const restartDistro = (name: string) => action("restart_distro", { name });
 export const shutdownWsl = () => action("shutdown_wsl");
-export const openTerminal = (name: string) => invoke<void>("open_terminal", { name });
+export const openTerminal = (name: string) => invoke<string>("open_terminal", { name, terminal: readSettings().terminal });
 export const openHome = (name: string) => invoke<void>("open_home_in_explorer", { name });
 export const openVscode = (name: string) => invoke<void>("open_vscode_home", { name });
 export const resources = (name: string) => invoke<DistroResourceInfo>("get_distro_resource_info", { name });
