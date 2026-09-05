@@ -1,6 +1,6 @@
 import { readSettings } from "./storage";
 import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
-import type { CommandOutput, DockerContainer, DistroResourceInfo, PortInfo, WslDistro } from "./types";
+import type { CommandOutput, DockerContainer, DistroResourceInfo, OnlineDistro, PortInfo, WslDistro } from "./types";
 async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (!isTauri()) throw new Error("当前为浏览器预览，无法读取本机 WSL。请启动 WSL 开发中心桌面应用。");
   return tauriInvoke<T>(command, args);
@@ -11,6 +11,12 @@ async function action(command: string, args?: Record<string, unknown>): Promise<
   return output;
 }
 export const listWslDistros = () => invoke<WslDistro[]>("list_wsl_distros");
+export const listOnlineDistros = () => invoke<OnlineDistro[]>("list_online_distros");
+export const installDistro = (distribution: string) => action("install_distro", { distribution });
+export const importDistro = (name: string, installLocation: string, archivePath: string, vhd: boolean) => action("import_distro", { name, installLocation, archivePath, vhd });
+export const exportDistro = (name: string, archivePath: string, vhd: boolean) => action("export_distro", { name, archivePath, vhd });
+export const cloneDistro = (source: string, target: string, installLocation: string) => action("clone_distro", { source, target, installLocation });
+export const unregisterDistro = (name: string) => action("unregister_distro", { name });
 export const startDistro = (name: string) => action("start_distro", { name });
 export const terminateDistro = (name: string) => action("terminate_distro", { name });
 export const restartDistro = (name: string) => action("restart_distro", { name });

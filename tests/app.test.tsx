@@ -94,6 +94,51 @@ describe("按需查询与设置", () => {
     expect(screen.getByRole("alert").textContent).toContain("磁盘查询失败");
     expect(screen.getByText("0")).toBeTruthy();
   });
+  it("详情展示系统版本、内核与 CPU 占用", async () => {
+    mockInvoke.mockResolvedValue({
+      distro: running.name,
+      osVersionText: "Ubuntu 24.04.1 LTS",
+      kernelVersionText: "6.6.87.2-microsoft-standard-WSL2",
+      cpuText: "1.2 us, 0.8 sy, 98.0 id",
+      memoryText: "Mem: 2.0Gi 1.0Gi 1.0Gi",
+      diskText: "/dev/sdc 100G 20G 80G 20% /",
+      processCount: 12,
+      errors: [],
+    });
+    render(<Detail distro={running} settings={{ ...defaults, ports: false, docker: false }} />); await settle();
+    expect(screen.getByText("系统版本")).toBeTruthy();
+    expect(screen.getByText("Ubuntu 24.04.1 LTS")).toBeTruthy();
+    expect(screen.getByText("内核版本")).toBeTruthy();
+    expect(screen.getByText("CPU 占用")).toBeTruthy();
+  });
+  it("实例页提供创建、导入、复制、导出和删除入口", async () => {
+    render(<App />); await settle();
+    for (const name of ["安装新实例", "导入实例", "复制", "导出", "删除"]) {
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+    }
+  });
+  it("删除实例必须二次确认", async () => {
+    render(<App />); await settle();
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    expect(screen.getByRole("heading", { name: "删除 Ubuntu 中文？" })).toBeTruthy();
+    expect(mockInvoke.mock.calls.some(([command]) => command === "unregister_distro")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" })); await settle();
+    expect(mockInvoke.mock.calls.some(([command]) => command === "unregister_distro")).toBe(true);
+  });
+  it("实例操作 API 使用结构化参数调用后端", async () => {
+    await api.installDistro("Ubuntu-24.04");
+    await api.importDistro("开发环境", "D:\\WSL\\开发环境", "D:\\备份\\ubuntu.tar", false);
+    await api.exportDistro("开发环境", "D:\\备份\\开发环境.vhdx", true);
+    await api.cloneDistro("开发环境", "开发环境副本", "D:\\WSL\\开发环境副本");
+    await api.unregisterDistro("开发环境副本");
+    expect(mockInvoke.mock.calls.slice(-5)).toEqual([
+      ["install_distro", { distribution: "Ubuntu-24.04" }],
+      ["import_distro", { name: "开发环境", installLocation: "D:\\WSL\\开发环境", archivePath: "D:\\备份\\ubuntu.tar", vhd: false }],
+      ["export_distro", { name: "开发环境", archivePath: "D:\\备份\\开发环境.vhdx", vhd: true }],
+      ["clone_distro", { source: "开发环境", target: "开发环境副本", installLocation: "D:\\WSL\\开发环境副本" }],
+      ["unregister_distro", { name: "开发环境副本" }],
+    ]);
+  });
   it("切换实例后忽略旧 Docker 请求", async () => {
     let first!: (value: unknown) => void;
     mockInvoke.mockImplementation((_command, args) => (args as { name: string }).name === "A" ? new Promise(resolve => { first = resolve; }) : Promise.resolve([]));
