@@ -1,28 +1,7 @@
-use serde::Serialize;
-use std::process::Command;
+mod models;
+mod services;
+mod commands;
 
-#[derive(Serialize)] #[serde(rename_all = "camelCase")]
-struct Distro { name: String, state: String, version: Option<u8>, is_default: bool }
-#[derive(Serialize)]
-struct Output { success: bool, code: Option<i32>, stdout: String, stderr: String }
-#[derive(Serialize)] #[serde(rename_all = "camelCase")]
-struct Resource { distro: String, memory_text: Option<String>, disk_text: Option<String>, uptime_text: Option<String>, process_count: Option<u32>, errors: Vec<String> }
-#[derive(Serialize)] #[serde(rename_all = "camelCase")]
-struct Port { protocol: String, local_address: String, port: u16, process_name: Option<String>, pid: Option<u32>, raw: String }
-#[derive(Serialize, serde::Deserialize)] #[serde(rename_all = "camelCase")]
-struct Docker { #[serde(rename="ID")] id:String, #[serde(rename="Image")] image:String, #[serde(rename="Status")] status:String, #[serde(rename="Ports")] ports:Option<String>, #[serde(rename="Names")] names:String }
+use commands::{wsl::*, docker::*, system::*};
 
-fn run(args: &[&str]) -> Result<Output, String> { let out = Command::new("wsl.exe").args(args).output().map_err(|e| format!("failed to run wsl.exe: {e}"))?; Ok(Output { success:out.status.success(), code:out.status.code(), stdout:String::from_utf8_lossy(&out.stdout).replace('\0', "").trim().into(), stderr:String::from_utf8_lossy(&out.stderr).replace('\0', "").trim().into() }) }
-#[tauri::command] fn list_wsl_distros() -> Result<Vec<Distro>, String> { let out=run(&["-l","-v"])?; if !out.success { return Err(format!("WSL is not installed or unavailable: {} (exit {:?})",out.stderr,out.code)); } Ok(out.stdout.lines().filter_map(|line| { let line=line.trim(); if line.is_empty() || line.to_lowercase().contains("name") && line.to_lowercase().contains("version") {return None}; let default=line.starts_with('*'); let p:Vec<_>=line.trim_start_matches('*').split_whitespace().collect(); if p.len()<3{return None}; Some(Distro{name:p[..p.len()-2].join(" "),state:p[p.len()-2].into(),version:p[p.len()-1].parse().ok(),is_default:default}) }).collect()) }
-#[tauri::command] fn start_distro(name:String)->Result<Output,String>{run(&["-d",&name,"--","echo","ok"])}
-#[tauri::command] fn terminate_distro(name:String)->Result<Output,String>{run(&["--terminate",&name])}
-#[tauri::command] fn restart_distro(name:String)->Result<Output,String>{let a=terminate_distro(name.clone())?;std::thread::sleep(std::time::Duration::from_millis(500));let b=start_distro(name)?;Ok(Output{success:a.success&&b.success,code:b.code,stdout:format!("{}\n{}",a.stdout,b.stdout),stderr:format!("{}\n{}",a.stderr,b.stderr)})}
-#[tauri::command] fn shutdown_wsl()->Result<Output,String>{run(&["--shutdown"])}
-#[tauri::command] fn open_terminal(name:String)->Result<(),String>{if Command::new("wt.exe").args(["wsl.exe","-d",&name]).spawn().is_ok(){return Ok(())};Command::new("powershell.exe").args(["-NoExit","-Command","& wsl.exe -d $args[0]",&name]).spawn().map_err(|e|format!("Windows Terminal was not found and PowerShell fallback failed: {e}"))?;Ok(())}
-#[tauri::command] fn open_home_in_explorer(name:String)->Result<(),String>{Command::new("explorer.exe").arg(format!(r"\\wsl$\{}\home",name)).spawn().map_err(|e|format!("Failed to open WSL home path: {e}"))?;Ok(())}
-#[tauri::command] fn open_vscode_home(name:String)->Result<(),String>{Command::new("code").args(["--remote",&format!("wsl+{name}"),"/home"]).spawn().map_err(|_|"VS Code CLI not found. Please enable the code command in PATH.".to_string())?;Ok(())}
-fn text(result:Result<Output,String>, errors:&mut Vec<String>)->Option<String>{match result{Ok(o)if o.success=>Some(o.stdout),Ok(o)=>{errors.push(format!("{} (exit {:?})",o.stderr,o.code));None},Err(e)=>{errors.push(e);None}}}
-#[tauri::command] fn get_distro_resource_info(name:String)->Result<Resource,String>{let mut e=vec![];let memory=text(run(&["-d",&name,"--","free","-h"]),&mut e);let disk=text(run(&["-d",&name,"--","df","-h","/"]),&mut e);let uptime=text(run(&["-d",&name,"--","uptime","-p"]),&mut e);let process_count=text(run(&["-d",&name,"--","sh","-lc","ps -e --no-headers | wc -l"]),&mut e).and_then(|v|v.parse().ok());Ok(Resource{distro:name,memory_text:memory,disk_text:disk,uptime_text:uptime,process_count,errors:e})}
-#[tauri::command] fn list_ports(name:String)->Result<Vec<Port>,String>{let out=run(&["-d",&name,"--","ss","-tulpn"]).or_else(|_|run(&["-d",&name,"--","netstat","-tulpn"]))?;if !out.success{return Err(format!("Failed to list ports: {}",out.stderr))};Ok(out.stdout.lines().filter_map(|raw|{if !(raw.contains("LISTEN")||raw.contains("UNCONN")){return None};let local=raw.split_whitespace().find(|x|x.rsplit_once(':').and_then(|(_,p)|p.parse::<u16>().ok()).is_some())?.to_string();let port=local.rsplit_once(':')?.1.parse().ok()?;let process_name=raw.split("users:((\"").nth(1).and_then(|x|x.split('\"').next()).map(str::to_string);let pid=raw.split("pid=").nth(1).and_then(|x|x.split(|c:char|!c.is_ascii_digit()).next()).and_then(|x|x.parse().ok());Some(Port{protocol:raw.split_whitespace().next()?.chars().take(3).collect(),local_address:local,port,process_name,pid,raw:raw.into()})}).collect())}
-#[tauri::command] fn list_docker_containers(name:String)->Result<Vec<Docker>,String>{let out=run(&["-d",&name,"--","docker","ps","-a","--format","{{json .}}"])?;if !out.success{return Err(format!("Docker is not installed in this distribution: {}",out.stderr))};Ok(out.stdout.lines().filter_map(|x|serde_json::from_str(x).ok()).collect())}
-#[cfg_attr(mobile, tauri::mobile_entry_point)] pub fn run_app(){tauri::Builder::default().plugin(tauri_plugin_opener::init()).invoke_handler(tauri::generate_handler![list_wsl_distros,start_distro,terminate_distro,restart_distro,shutdown_wsl,open_terminal,open_home_in_explorer,open_vscode_home,get_distro_resource_info,list_ports,list_docker_containers]).run(tauri::generate_context!()).expect("error while running WSL Dev Center")}
+#[cfg_attr(mobile, tauri::mobile_entry_point)] pub fn run_app(){tauri::Builder::default().plugin(tauri_plugin_opener::init()).invoke_handler(tauri::generate_handler![list_wsl_distros,start_distro,terminate_distro,restart_distro,shutdown_wsl,open_terminal,open_home_in_explorer,open_vscode_home,get_distro_resource_info,list_ports,list_docker_containers]).run(tauri::generate_context!()).expect("WSL 开发中心启动失败")}
