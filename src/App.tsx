@@ -20,8 +20,12 @@ export default function App() {
   const [loading, setLoading] = useState(true), [listError, setListError] = useState("");
   const [error, setError] = useState(""), [confirm, setConfirm] = useState(false);
   const fetching = useRef<Promise<void> | null>(null);
-  const refresh = useCallback((): Promise<void> => {
-    if (fetching.current) return fetching.current;
+  const refresh = useCallback(async function refreshList(force = false): Promise<void> {
+    if (fetching.current) {
+      await fetching.current;
+      if (force) return refreshList();
+      return;
+    }
     setLoading(true);
     const request = (async () => {
       try { setDistros(await api.listWslDistros()); setListError(""); }
@@ -73,13 +77,13 @@ export default function App() {
       ].map(([label, value]) => <article className="metric" key={label}><span>{label}</span><strong>{value}</strong></article>)}</section>}
     </>}
     {route === "/machines" && <section className="panel"><div className="toolbar"><h2>WSL 实例</h2><button disabled={loading} onClick={() => void refresh()}>{loading ? "正在刷新…" : "刷新列表"}</button></div>
-      {!listError && (!loading || distros.length > 0) && <Machines distros={settings.showStopped ? distros : distros.filter(d => d.state !== "Stopped")} refresh={refresh} select={d => { window.location.hash = `/machines/${encodeURIComponent(d.name)}`; }} error={setError} />}
+      {!listError && (!loading || distros.length > 0) && <Machines distros={settings.showStopped ? distros : distros.filter(d => d.state !== "Stopped")} refresh={() => refresh(true)} select={d => { window.location.hash = `/machines/${encodeURIComponent(d.name)}`; }} error={setError} />}
     </section>}
     {route === "/docker" && !listError && (settings.docker ? <Docker distros={distros} /> : <p>Docker 面板已关闭，可在设置中启用。</p>)}
     {route === "/settings" && <Settings value={settings} change={setSettings} />}
     {name && !loading && !listError && (selected ? <Detail key={`${selected.name}:${selected.state}`} distro={selected} settings={settings} /> : <p>实例不存在，请返回实例列表刷新。</p>)}
     {!name && !(route in menu) && <p>页面不存在。<a href="#/">返回概览</a></p>}
-    {confirm && <ConfirmDialog cancel={() => setConfirm(false)} confirm={async () => { await api.shutdownWsl(); setConfirm(false); await refresh(); }} />}
+    {confirm && <ConfirmDialog cancel={() => setConfirm(false)} confirm={async () => { await api.shutdownWsl(); setConfirm(false); await refresh(true); }} />}
     </main>
   </div>;
 }

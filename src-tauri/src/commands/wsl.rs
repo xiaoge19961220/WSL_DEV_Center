@@ -98,3 +98,18 @@ pub fn ensure_running(name: &str) -> Result<(), String> {
         None => Err("实例不存在，请刷新列表。".into()),
     }
 }
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "需要 Windows WSL 环境；仅只读列出实例并验证停止保护"]
+    fn live_wsl_listing_and_stopped_guard() {
+        let distros = list_wsl_distros().expect("无法列出真实 WSL 实例");
+        println!("{}", serde_json::to_string(&distros).unwrap());
+        for distro in distros.iter().filter(|d| d.state == "Stopped") {
+            assert!(ensure_running(&distro.name).is_err());
+        }
+    }
+}

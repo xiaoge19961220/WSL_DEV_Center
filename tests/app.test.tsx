@@ -63,6 +63,22 @@ describe("WSL 操作与刷新", () => {
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(mockInvoke.mock.calls.some(([command]) => command === "shutdown_wsl")).toBe(false);
   });
+  it("操作完成后重新查询，不复用操作前尚未完成的列表", async () => {
+    let finishOld!: (value: unknown) => void;
+    let queries = 0;
+    mockInvoke.mockImplementation(command => {
+      if (command !== "list_wsl_distros") return Promise.resolve({ success: true, code: 0, stdout: "", stderr: "" });
+      queries++;
+      if (queries === 2) return new Promise(resolve => { finishOld = resolve; });
+      return Promise.resolve([queries === 1 ? stopped : running]);
+    });
+    render(<App />); await settle();
+    fireEvent.click(screen.getByRole("button", { name: "刷新列表" }));
+    fireEvent.click(screen.getByRole("button", { name: "启动", exact: true })); await settle();
+    await act(async () => { finishOld([stopped]); }); await settle();
+    expect(queries).toBe(3);
+    expect(screen.getByRole("button", { name: "停止", exact: true })).toBeTruthy();
+  });
 });
 
 describe("按需查询与设置", () => {
