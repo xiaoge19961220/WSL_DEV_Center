@@ -1,26 +1,51 @@
 use crate::models::Port;
 
 pub fn parse_ports(output: &str, netstat: bool) -> Vec<Port> {
-    output.lines().filter_map(|raw| {
-        let fields: Vec<_> = raw.split_whitespace().collect();
-        let protocol = if fields.first()?.starts_with("tcp") { "tcp" }
-            else if fields.first()?.starts_with("udp") { "udp" } else { return None; };
-        if protocol == "tcp" && !fields.contains(&"LISTEN") { return None; }
-        let local = *fields.get(if netstat { 3 } else { 4 })?;
-        let (address, number) = local.rsplit_once(':')?;
-        let port: u16 = number.parse().ok()?;
-        let (pid, process_name) = if netstat {
-            match fields.last()?.split_once('/') {
-                Some((pid, name)) => (pid.parse().ok(), Some(name.to_owned())),
-                None => (None, None),
+    output
+        .lines()
+        .filter_map(|raw| {
+            let fields: Vec<_> = raw.split_whitespace().collect();
+            let protocol = if fields.first()?.starts_with("tcp") {
+                "tcp"
+            } else if fields.first()?.starts_with("udp") {
+                "udp"
+            } else {
+                return None;
+            };
+            if protocol == "tcp" && !fields.contains(&"LISTEN") {
+                return None;
             }
-        } else {
-            let pid = raw.split("pid=").nth(1).and_then(|part| part.split(|c: char| !c.is_ascii_digit()).next()).and_then(|p| p.parse().ok());
-            let name = raw.split("users:((\"").nth(1).and_then(|part| part.split('"').next()).map(str::to_owned);
-            (pid, name)
-        };
-        Some(Port { protocol: protocol.into(), local_address: address.trim_matches(['[', ']']).into(), port, process_name, pid, raw: raw.into() })
-    }).collect()
+            let local = *fields.get(if netstat { 3 } else { 4 })?;
+            let (address, number) = local.rsplit_once(':')?;
+            let port: u16 = number.parse().ok()?;
+            let (pid, process_name) = if netstat {
+                match fields.last()?.split_once('/') {
+                    Some((pid, name)) => (pid.parse().ok(), Some(name.to_owned())),
+                    None => (None, None),
+                }
+            } else {
+                let pid = raw
+                    .split("pid=")
+                    .nth(1)
+                    .and_then(|part| part.split(|c: char| !c.is_ascii_digit()).next())
+                    .and_then(|p| p.parse().ok());
+                let name = raw
+                    .split("users:((\"")
+                    .nth(1)
+                    .and_then(|part| part.split('"').next())
+                    .map(str::to_owned);
+                (pid, name)
+            };
+            Some(Port {
+                protocol: protocol.into(),
+                local_address: address.trim_matches(['[', ']']).into(),
+                port,
+                process_name,
+                pid,
+                raw: raw.into(),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

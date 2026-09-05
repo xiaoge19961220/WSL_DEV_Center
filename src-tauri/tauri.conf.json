@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "wsl-dev-center",
-        "width": 800,
-        "height": 600
+        "title": "WSL 开发中心",
+        "width": 1180,
+        "height": 780,
+        "minWidth": 760,
+        "minHeight": 560
       }
     ],
     "security": {

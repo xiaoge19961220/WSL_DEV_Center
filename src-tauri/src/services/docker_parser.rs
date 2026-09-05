@@ -1,9 +1,19 @@
 use crate::models::Docker;
 
 pub fn parse_docker(output: &str) -> Result<Vec<Docker>, String> {
-    output.lines().filter(|l| !l.trim().is_empty()).enumerate().map(|(i, line)| {
-        serde_json::from_str(line).map_err(|e| format!("无法解析 Docker 容器数据。\n位置：容器列表第 {} 行\n详情：{e}", i + 1))
-    }).collect()
+    output
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .enumerate()
+        .map(|(i, line)| {
+            serde_json::from_str(line).map_err(|e| {
+                format!(
+                    "无法解析 Docker 容器数据。\n位置：容器列表第 {} 行\n详情：{e}",
+                    i + 1
+                )
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
