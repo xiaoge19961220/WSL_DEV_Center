@@ -17,3 +17,6 @@ export const openVscode = (name: string) => invoke<void>("open_vscode_home", { n
 export const resources = (name: string) => invoke<DistroResourceInfo>("get_distro_resource_info", { name });
 export const ports = (name: string) => invoke<PortInfo[]>("list_ports", { name });
 export const containers = (name: string) => invoke<DockerContainer[]>("list_docker_containers", { name });
+export const startContainer = (distro: string, container: string) => action("start_container", { distro, container });
+export const stopContainer = (distro: string, container: string) => action("stop_container", { distro, container });
+export const containerLogs = (distro: string, container: string) => action("container_logs", { distro, container });

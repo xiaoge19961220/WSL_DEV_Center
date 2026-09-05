@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import * as api from "../lib/api";
 import type { DistroResourceInfo, WslDistro } from "../lib/types";
+import { DockerPanel } from "./DockerPanel";
 import { PortPanel } from "./PortPanel";
 import { ErrorBox, Loading, Status } from "./Feedback";
 
@@ -28,5 +29,5 @@ export function Detail({ distro }: { distro: WslDistro }) {
       ].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value ?? "暂不可用"}</strong></article>)}</div>
       <ErrorBox message={resource.errors.join("\n\n")} /></>}
     </>}
-  </section>{distro.state === "Running" && <PortPanel key={distro.name} name={distro.name} />}</>;
+  </section>{distro.state === "Running" && <><PortPanel key={distro.name} name={distro.name} /><DockerPanel key={`docker:${distro.name}`} name={distro.name} /></>}</>;
 }
