@@ -7,12 +7,14 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { Detail } from "./components/Detail";
 import { Docker } from "./components/InspectionPanels";
 import { Settings } from "./components/SettingsPage";
+import { readSettings } from "./lib/storage";
 import "./App.css";
 
 const menu = { "/": "概览", "/machines": "实例", "/docker": "Docker", "/settings": "设置" };
 function currentRoute() { return window.location.hash.slice(1) || "/"; }
 
 export default function App() {
+  const [settings, setSettings] = useState(readSettings);
   const [route, setRoute] = useState(currentRoute);
   const [distros, setDistros] = useState<WslDistro[]>([]);
   const [loading, setLoading] = useState(true), [listError, setListError] = useState("");
@@ -37,11 +39,17 @@ export default function App() {
   useEffect(() => { void refresh(); }, [refresh, route]);
   useEffect(() => {
     if (route !== "/machines") return;
-    const seconds = Number(localStorage.getItem("refresh") ?? 5);
+    const seconds = settings.refresh;
     if (![3, 5, 10].includes(seconds)) return;
     const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, seconds * 1000);
     return () => clearInterval(timer);
-  }, [route, refresh]);
+  }, [route, refresh, settings.refresh]);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => { document.documentElement.dataset.theme = settings.theme === "system" ? (media.matches ? "dark" : "light") : settings.theme; };
+    apply(); media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [settings.theme]);
   let name = "";
   if (route.startsWith("/machines/")) {
     try { name = decodeURIComponent(route.slice("/machines/".length)); } catch { name = ""; }
@@ -65,11 +73,11 @@ export default function App() {
       ].map(([label, value]) => <article className="metric" key={label}><span>{label}</span><strong>{value}</strong></article>)}</section>}
     </>}
     {route === "/machines" && <section className="panel"><div className="toolbar"><h2>WSL 实例</h2><button disabled={loading} onClick={() => void refresh()}>{loading ? "正在刷新…" : "刷新列表"}</button></div>
-      {!listError && (!loading || distros.length > 0) && <Machines distros={distros} refresh={refresh} select={d => { window.location.hash = `/machines/${encodeURIComponent(d.name)}`; }} error={setError} />}
+      {!listError && (!loading || distros.length > 0) && <Machines distros={settings.showStopped ? distros : distros.filter(d => d.state !== "Stopped")} refresh={refresh} select={d => { window.location.hash = `/machines/${encodeURIComponent(d.name)}`; }} error={setError} />}
     </section>}
-    {route === "/docker" && !listError && <Docker distros={distros} error={setError} />}
-    {route === "/settings" && <Settings />}
-    {name && !loading && !listError && (selected ? <Detail key={`${selected.name}:${selected.state}`} distro={selected} /> : <p>实例不存在，请返回实例列表刷新。</p>)}
+    {route === "/docker" && !listError && (settings.docker ? <Docker distros={distros} /> : <p>Docker 面板已关闭，可在设置中启用。</p>)}
+    {route === "/settings" && <Settings value={settings} change={setSettings} />}
+    {name && !loading && !listError && (selected ? <Detail key={`${selected.name}:${selected.state}`} distro={selected} settings={settings} /> : <p>实例不存在，请返回实例列表刷新。</p>)}
     {!name && !(route in menu) && <p>页面不存在。<a href="#/">返回概览</a></p>}
     {confirm && <ConfirmDialog cancel={() => setConfirm(false)} confirm={async () => { await api.shutdownWsl(); setConfirm(false); await refresh(); }} />}
     </main>
