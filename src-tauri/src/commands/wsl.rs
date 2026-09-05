@@ -12,7 +12,21 @@ pub fn list_wsl_distros() -> Result<Vec<Distro>, String> {
 #[tauri::command] pub fn shutdown_wsl()->Result<Output,String>{run(&["--shutdown"])}
 fn text(result:Result<Output,String>, errors:&mut Vec<String>)->Option<String>{match result{Ok(o)if o.success=>Some(o.stdout),Ok(o)=>{errors.push(format!("{} (exit {:?})",o.stderr,o.code));None},Err(e)=>{errors.push(e);None}}}
 #[tauri::command] pub fn get_distro_resource_info(name:String)->Result<Resource,String>{ensure_running(&name)?;let mut e=vec![];let memory=text(run(&["-d",&name,"--","free","-h"]),&mut e);let disk=text(run(&["-d",&name,"--","df","-h","/"]),&mut e);let uptime=text(run(&["-d",&name,"--","uptime","-p"]),&mut e);let process_count=text(run(&["-d",&name,"--","sh","-lc","ps -e --no-headers | wc -l"]),&mut e).and_then(|v|v.parse().ok());Ok(Resource{distro:name,memory_text:memory,disk_text:disk,uptime_text:uptime,process_count,errors:e})}
-#[tauri::command] pub fn list_ports(name:String)->Result<Vec<Port>,String>{let out=run(&["-d",&name,"--","ss","-tulpn"]).or_else(|_|run(&["-d",&name,"--","netstat","-tulpn"]))?;if !out.success{return Err(format!("Failed to list ports: {}",out.stderr))};Ok(out.stdout.lines().filter_map(|raw|{if !(raw.contains("LISTEN")||raw.contains("UNCONN")){return None};let local=raw.split_whitespace().find(|x|x.rsplit_once(':').and_then(|(_,p)|p.parse::<u16>().ok()).is_some())?.to_string();let port=local.rsplit_once(':')?.1.parse().ok()?;let process_name=raw.split("users:((\"").nth(1).and_then(|x|x.split('\"').next()).map(str::to_string);let pid=raw.split("pid=").nth(1).and_then(|x|x.split(|c:char|!c.is_ascii_digit()).next()).and_then(|x|x.parse().ok());Some(Port{protocol:raw.split_whitespace().next()?.chars().take(3).collect(),local_address:local,port,process_name,pid,raw:raw.into()})}).collect())}
+#[tauri::command]
+pub fn list_ports(name: String) -> Result<Vec<Port>, String> {
+    ensure_running(&name)?;
+    let ss = run(&["-d", &name, "--", "ss", "-tulpn"])
+        .and_then(|out| crate::services::process::checked(out, "ss 端口查询"));
+    match ss {
+        Ok(out) => Ok(crate::services::port_parser::parse_ports(&out.stdout, false)),
+        Err(first) => {
+            let out = run(&["-d", &name, "--", "netstat", "-tulpn"])
+                .and_then(|out| crate::services::process::checked(out, "netstat 端口查询"))
+                .map_err(|second| format!("{first}\n\n回退查询也失败，请确认已安装 ss 或 netstat。\n{second}"))?;
+            Ok(crate::services::port_parser::parse_ports(&out.stdout, true))
+        }
+    }
+}
 
 pub fn ensure_running(name: &str) -> Result<(), String> {
     match list_wsl_distros()?.into_iter().find(|d| d.name == name) {
